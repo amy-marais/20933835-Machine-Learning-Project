@@ -1,0 +1,67 @@
+---
+output:
+  md_document:
+    variant: markdown_github
+---
+
+# Purpose
+
+Purpose of this work folder.
+
+Ideally store a minimum working example data set in data folder.
+
+Add binary files in bin, and closed R functions in code. Human Readable settings files (e.g. csv) should be placed in settings/
+
+
+```{r}
+
+rm(list = ls()) # Clean your environment:
+gc() # garbage collection - It can be useful to call gc after a large object has been removed, as this may prompt R to return memory to the operating system.
+library(tidyverse)
+list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = TRUE,
+  dpi=300, 
+  fig.align = "center",
+  message = FALSE,
+  warning = FALSE,
+  collapse = TRUE,
+  cache = FALSE
+  )
+
+# packages
+pacman::p_load(dplyr, ggplot2, rsample, caret)
+```
+
+```{r}
+# I want to read in my melbourne property data, but I am naming it ames for ease of copying and pasting example code
+library(readr)
+ames <- read_csv("data/melb_data.csv")
+```
+
+# Intro to ML 
+
+It is important that our algorithm is able to not only fit the data well, but also new data that might become available. We want our algorithm to generalise to unseen data. In order to determine how well our model might do in a new environment we can split the data that we have into training and test data sets (as depicted in the figure above). A training set is used to determine the attributes of our final model and once we have this final model we can evaluate the performance of the model against the test data set. This is akin to in-sample and out of sample forecasting in time series econometrics. There are two common ways to split the data, namely simple random sampling and stratified sampling. We will only look at simple random sampling for now.
+
+### Simple random sampling
+
+The easiest way to split the data is using a simple random sample. There are multiple ways that you can do this. You can use base R, but there are also more specialised packages available. One way to do simple random sampling, with a 70-30 split in the data, would be the following.
+
+
+```{r}
+# Using rsample package
+
+set.seed(123)  # Set the seed for reproducibility
+split_1  <- initial_split(ames, prop = 0.7)  # Split the dataset 
+train_2  <- training(split_1)  # Training set
+test_2   <- testing(split_1)  # Test set
+```
+
+This is much easier to implement and understand. We will often have to write our own functions to perform customised tasks, but when we can rely on packages that have been designed by professional software engineers we make the most of it.  
+
+```{r}
+
+```
+
