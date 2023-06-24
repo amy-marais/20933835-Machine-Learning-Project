@@ -985,8 +985,27 @@ for(i in seq_len(nrow(hyper_grid))) {
 }
 ```
 
-rmse
-trees
+```{r}
+print(m)
+```
+
+Output:
+##### xgb.cv 10-folds
+    iter train_rmse_mean train_rmse_std test_rmse_mean test_rmse_std
+       1       1264647.7       7026.255      1263170.4      61672.95
+       2       1263194.7       7015.882      1261714.5      61708.83
+       3       1261728.7       6999.672      1260245.1      61750.21
+       4       1260263.3       7012.259      1258776.9      61764.71
+       5       1258811.1       7003.415      1257321.7      61799.09
+---                                                                 
+    3996        479595.7       7733.994       477492.7      74564.42
+    3997        479566.8       7734.855       477463.9      74565.69
+    3998        479539.7       7733.956       477437.8      74566.77
+    3999        479512.6       7734.814       477410.9      74566.88
+    4000        479485.6       7735.126       477384.7      74567.07
+Best iteration:
+ iter train_rmse_mean train_rmse_std test_rmse_mean test_rmse_std
+ 4000        479485.6       7735.126       477384.7      74567.07
 
 ## XGBoost final model
 
@@ -1005,10 +1024,40 @@ xgb.fit.final <- xgboost(
   params = params,
   data = X,
   label = Y,
-  nrounds = 3944,
+  nrounds = 4000,
   objective = "reg:linear",
   verbose = 0
 )
 ```
+
+```{r}
+print(xgb.fit.final)
+```
+
+Output: 
+##### xgb.Booster
+raw: 4.2 Mb 
+call:
+  xgb.train(params = params, data = dtrain, nrounds = nrounds, 
+    watchlist = watchlist, verbose = verbose, print_every_n = print_every_n, 
+    early_stopping_rounds = early_stopping_rounds, maximize = maximize, 
+    save_period = save_period, save_name = save_name, xgb_model = xgb_model, 
+    callbacks = callbacks, objective = "reg:linear")
+params (as set within xgb.train):
+  eta = "0.01", max_depth = "3", min_child_weight = "3", subsample = "0.5", colsample_bytree = "0.5", objective = "reg:linear", validate_parameters = "TRUE"
+xgb.attributes:
+  niter
+callbacks:
+  cb.evaluation.log()
+# of features: 7 
+niter: 4000
+nfeatures : 7 
+evaluation_log:
+    iter train_rmse
+       1  1255688.7
+       2  1245734.0
+---                
+    3999   230119.1
+    4000   230114.1
 
 
