@@ -4,20 +4,18 @@ output:
     variant: markdown_github
 ---
 
-# Purpose
+# Machine Learning Project for Data Science
 
-Purpose of this work folder.
+Please note that some code chunks took days to process and ended up making my computer crash, hence results from these chunks are not published in the report. My computer is rather old... so I've kept the code in that is computationally intensive, these chunks are labelled "this chunk broke my computer" as a warning to myself, so I could at least continue my work on the project without any major setbacks. 
 
-Ideally store a minimum working example data set in data folder.
-
-Add binary files in bin, and closed R functions in code. Human Readable settings files (e.g. csv) should be placed in settings/
-
+# Load packages
 
 ```{r}
 
 rm(list = ls()) # Clean your environment:
 gc() # garbage collection - It can be useful to call gc after a large object has been removed, as this may prompt R to return memory to the operating system.
 library(tidyverse)
+library(class)
 list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
 
 knitr::opts_chunk$set(
@@ -35,33 +33,982 @@ knitr::opts_chunk$set(
 pacman::p_load(dplyr, ggplot2, rsample, caret)
 ```
 
+# Read our data into R
+
 ```{r}
-# I want to read in my melbourne property data, but I am naming it ames for ease of copying and pasting example code
+# read in my melbourne property data
 library(readr)
-ames <- read_csv("data/melb_data.csv")
+melb <- read_csv("data/melb_data.csv")
+melb <- na.omit(melb)
+
+
+# print a summary of the data in Melbourne data
+summary(melbourne_data)
 ```
-
-# Intro to ML 
-
-It is important that our algorithm is able to not only fit the data well, but also new data that might become available. We want our algorithm to generalise to unseen data. In order to determine how well our model might do in a new environment we can split the data that we have into training and test data sets (as depicted in the figure above). A training set is used to determine the attributes of our final model and once we have this final model we can evaluate the performance of the model against the test data set. This is akin to in-sample and out of sample forecasting in time series econometrics. There are two common ways to split the data, namely simple random sampling and stratified sampling. We will only look at simple random sampling for now.
 
 ### Simple random sampling
 
-The easiest way to split the data is using a simple random sample. There are multiple ways that you can do this. You can use base R, but there are also more specialised packages available. One way to do simple random sampling, with a 70-30 split in the data, would be the following.
+First, perform simple random sampling to break the data into training vs test data. Stratified sampling might have been the better option, but let's keep things basic for now. 
 
-
-```{r}
+```{r, cache=F, message=F}
 # Using rsample package
+split <- initial_split(melb, prop = 0.7)  # Split the dataset 
+melb_train <- training(split)  # Training set
+melb_test <- testing(split)  # Test set
 
-set.seed(123)  # Set the seed for reproducibility
-split_1  <- initial_split(ames, prop = 0.7)  # Split the dataset 
-train_2  <- training(split_1)  # Training set
-test_2   <- testing(split_1)  # Test set
 ```
 
-This is much easier to implement and understand. We will often have to write our own functions to perform customised tasks, but when we can rely on packages that have been designed by professional software engineers we make the most of it.  
+Next we use a $k$-nearest neighbour regressor.
+The resampling method applied is 10-fold cross validation, which is repeated 5 times.
+For the grid search we employ our basic method, with values for $k$ ranging from 2 to 25. 
+The loss function of our procedure is RMSE.
+Given this information we can now run the KNN model and see which value for $k$ will deliver the best result. 
+
+this chunk breaks my computer...
+```{r, cache=F, message=F}
+
+# Specify resampling strategy
+cv <- trainControl(
+  method = "repeatedcv", 
+  number = 10, 
+  repeats = 5
+)
+
+# Create grid of hyperparameter values
+hyper_grid <- expand.grid(k = seq(2, 25, by = 1))
+
+# Tune a knn model using grid search
+knn_fit <- train(
+  Price ~ ., 
+  data = melb_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+)
+```
+
+```{r, cache=F, message=F}
+# Print the results
+knn_fit
+```
+
+```{r, cache=F, message=F}
+# Plot the results
+ggplot(knn_fit)
+```
+
+# Regularisation
+
+```{r, cache=F, message=F}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, ggplot2, rsample, caret, glmnet, vip, tidyverse, pdp)
+```
+
+## Linear regression (one variable)
+
+Want to model linear relationship between total above ground living space of a home (`BuildingArea`) and sale price (`Price`). 
+
+```{r, cache=F, message=F}
+model1 <- lm(Price ~ BuildingArea, data = melb_train)
+```
+
+Plot results from this regression. 
+
+```{r, regression_1, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+# Fitted regression line (full training data)
+p1 <- model1 %>%
+  broom::augment() %>%
+  ggplot(aes(BuildingArea, Price)) + 
+  geom_point(linewidth = 1, alpha = 0.3) +
+  geom_smooth(se = FALSE, method = "lm") +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("Fitted regression line")
+
+p1
+```
+
+Plot regression with residuals 
+
+```{r, regression_2, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+p2 <- model1 %>%
+  broom::augment() %>%
+  ggplot(aes(BuildingArea, Price)) + 
+  geom_segment(aes(x = BuildingArea, y = Price,
+                   xend = BuildingArea, yend = .fitted), 
+               alpha = 0.3) +
+  geom_point(linewidth = 1, alpha = 0.3) +
+  geom_smooth(se = FALSE, method = "lm") +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("Fitted regression line (with residuals)")
+p2
+```
+
+## Evaluate results
+
+```{r, cache=F, message=F}
+summary(model1)
+```
+
+## Multiple linear regression
+
+Include more than one predictor 
+
+```{r, cache=F, message=F}
+model2 <- lm(Price ~ BuildingArea + YearBuilt + Rooms + Landsize + Distance + Bedroom2 + Bathroom + Car, data = melb_train)
+summary(model2)
+```
+
+Let us now test the results from the models to see which one is the most accurate. 
+
+## Linear regression
+
+```{r, cache=F, message=F}
+set.seed(123)  
+(cv_model1 <- train(form = Price ~ BuildingArea, 
+  data = melb_train, 
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+```
+
+## Multiple linear regression
+
+```{r, cache=F, message=F}
+set.seed(123)  
+(cv_model2 <- train(form = Price ~ BuildingArea + YearBuilt + Rooms + Landsize + Distance + Bedroom2 + Bathroom + Car, 
+  data = melb_train, 
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+```
+
+```{r, cache=F, message=F}
+set.seed(123)  
+(cv_model3 <- train(form = Price ~ ., 
+  data = melb_train, 
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+```
+
+### Out of sample performance 
+
+```{r, cache=F, message=F, echo=FALSE}
+summary(resamples(list(
+  model1 = cv_model1, 
+  model2 = cv_model2
+)))
+```
+
+## Regularised regression
+
+Regularisation methods provide a means to constrain / regularise the estimated coefficients. 
+
+Objective in OLS is to find hyperplane that minimises SSE between observed and predicted response values. 
+
+This chunk broke my computer....
+```{r, regression_3, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+melb_sub <- melb_train %>%
+  filter(BuildingArea > 1000 & BuildingArea < 3000) %>%
+  sample_frac(.5)
+model4 <- lm(Price ~ BuildingArea, data = melb_sub)
+
+model4 %>%
+  broom::augment() %>%
+  ggplot(aes(BuildingArea, Price)) + 
+  geom_segment(aes(x = BuildingArea, y = Price,
+                   xend = BuildingArea, yend = .fitted), 
+               alpha = 0.3) +
+  geom_point(linewidth = 1, color = "red") +
+  geom_smooth(se = FALSE, method = "lm") +
+  scale_y_continuous(labels = scales::dollar)
+
+```
+
+Objective function of regularised regression model includes penalty parameter $P$. 
+
+$$\min(\text{SSE + P})$$
+Penalty parameter constrains the size of coefficients.
+
+Three common penalty parameters
+
+1. Ridge
+2. Lasso
+3. Elastic net (combo)
+
+## glmnet
+
+We have to do some basic transformations to use this package. 
+
+```{r, cache=F, message=F}
+# Create training  feature matrices
+# we use model.matrix(...)[, -1] to discard the intercept
+X <- model.matrix(Price ~ ., melb_train)[, -1]
+
+# transform y with log transformation
+Y <- log(melb_train$Price)
+```
+
+
+```{r, cache=F, message=F}
+# Apply CV ridge regression to melb data
+ridge <- cv.glmnet(
+  x = X,
+  y = Y,
+  alpha = 0)
+
+# Apply CV lasso regression to melb data
+lasso <- cv.glmnet(
+  x = X,
+  y = Y,
+  alpha = 1)
+```
+
+Now let's plot the result...
+
+```{r, tuning, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+# plot results
+par(mfrow = c(1, 2))
+plot(ridge, main = "Ridge penalty\n\n")
+plot(lasso, main = "Lasso penalty\n\n")
+```
+
+```{r, cache=F, message=F}
+# Ridge model
+min(ridge$cvm)       # minimum MSE
+ridge$lambda.min     # lambda for this min MSE
+
+# Lasso model
+min(lasso$cvm)       # minimum MSE
+lasso$lambda.min     # lambda for this min MSE
+
+lasso$nzero[lasso$lambda == lasso$lambda.min] # No. of coef | Min MSE
+```
+
+```{r, ridge_lasso, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+# Ridge model
+ridge_min <- glmnet(
+  x = X,
+  y = Y,
+  alpha = 0
+)
+
+# Lasso model
+lasso_min <- glmnet(
+  x = X,
+  y = Y,
+  alpha = 1
+)
+
+par(mfrow = c(1, 2))
+# plot ridge model
+plot(ridge_min, xvar = "lambda", main = "Ridge penalty\n\n")
+abline(v = log(ridge$lambda.min), col = "red", lty = "dashed")
+abline(v = log(ridge$lambda.1se), col = "blue", lty = "dashed")
+
+# plot lasso model
+plot(lasso_min, xvar = "lambda", main = "Lasso penalty\n\n")
+abline(v = log(lasso$lambda.min), col = "red", lty = "dashed")
+abline(v = log(lasso$lambda.1se), col = "blue", lty = "dashed")
+```
+
+the next chunks break my computer...
+```{r, cache=F, message=F, echo = FALSE}
+set.seed(123)
+cv_glmnet <- train(
+  x = X,
+  y = Y,
+  method = "glmnet",
+  preProc = c("zv", "center", "scale"),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+```
+
+```{r, cache=F, message=F}
+# model with lowest RMSE
+cv_glmnet$bestTune
+
+# results for model with lowest RMSE
+cv_glmnet$results %>%
+  filter(alpha == cv_glmnet$bestTune$alpha, lambda == cv_glmnet$bestTune$lambda)
+
+# predict sales price on training data
+pred <- predict(cv_glmnet, X)
+
+# compute RMSE of transformed predicted
+RMSE(exp(pred), exp(Y))
+
+# RMSE of multiple linear regression was 26098.00
+```
+
+```{r, vip, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+vip(cv_glmnet, num_features = 20, geom = "point")
+```
+
+# Decision Trees
+
+## Packages and topics
+
+```{r, cache=F, message=F}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, ggplot2, rpart, caret, rpart.plot, 
+               vip, pdp, doParallel, foreach, 
+               ipred, ranger, gbm, xgboost)
+```
+
+## Decision trees
+
+
+```{r, message=F}
+# Create training (70%) set for the Melb housing data.
+set.seed(123)
+
+library(readr)
+melb <- read_csv("data/melb_data.csv")
+melb <- na.omit(melb)
+
+split  <- rsample::initial_split(melb, prop = 0.7, 
+                                 strata = "Price")
+melb_train  <- rsample::training(split)
+
+melb_dt1 <- rpart(
+  formula = Price ~ BuildingArea + YearBuilt + Rooms + Landsize + Distance + Bedroom2 + Bathroom + Car,
+  data    = melb_train,
+  method  = "anova"
+)
+
+```
+
+```{r, message=F}
+melb_dt1
+```
+
+Plot tree 
+
+```{r, regression_1, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+
+# plot our regression tree 
+plot(fit, uniform=TRUE)
+# add text labels & make them 60% as big as they are by default
+text(fit, cex=.6)
+```
+
+## Pruned decision tree
+this chunk breaks my computer...
+```{r, message=F, echo = F}
+melb_dt2 <- train(
+  Price ~ .,
+  data = melb_train,
+  method = "rpart",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 20
+)
+```
+
+```{r, message = F}
+melb_dt2
+```
+
+```{r, regression_1, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+# Increase the size of the plotting device
+par(mar = c(0.4, 0.4, 0.4, 0.4) + 0.04)  # Adjust the margin values as needed
+
+# plot our regression tree 
+plot(fit, uniform=TRUE)
+# add text labels & make them 60% as big as they are by default
+text(fit, cex=.6)
+```
+
+## Bagging 
+
+this chunk of code breaks my compuer...
+```{r, message = F}
+# make bootstrapping reproducible
+set.seed(123)
+
+# train bagged model
+melb_bag1 <- bagging(
+  formula = Price ~ .,
+  data = melb_train,
+  nbagg = 100,  
+  coob = TRUE,
+  control = rpart.control(minsplit = 2, cp = 0)
+)
+```
+
+```{r, message = F}
+melb_bag1
+```
+
+```{r, bagging-2, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 10, fig.height = 8, fig.align = 'center'}
+# using ranger to do the same as above.  Will allow for bagging under 10 trees
+# and is much faster!
+ntree <- seq(1, 200, by = 2)
+# create empty vector to store OOB RMSE values
+rmse <- vector(mode = "numeric", length = length(ntree))
+
+for (i in seq_along(ntree)) {
+  # reproducibility
+  set.seed(123)
+  # perform bagged model
+  model <- ranger::ranger(
+  formula = Price ~ .,
+  data    = melb_train,
+  num.trees = ntree[i],
+  mtry = ncol(melb_train) - 1,
+  min.node.size = 1
+)
+  # get OOB error
+  rmse[i] <- sqrt(model$prediction.error)
+}
+
+bagging_errors <- data.frame(ntree, rmse)
+
+ggplot(bagging_errors, aes(ntree, rmse)) +
+  geom_line() +
+  geom_hline(yintercept = 41019, lty = "dashed", color = "grey50") +
+  annotate("text", x = 100, y = 41385, label = "Best individual pruned tree", vjust = 0, hjust = 0, color = "grey50") +
+  annotate("text", x = 100, y = 26750, label = "Bagged trees", vjust = 0, hjust = 0) +
+  ylab("RMSE") +
+  xlab("Number of trees")
+```
+
+# Random Forests and Gradient Boosting 
+
+## Packages and topics
+
+
+```{r, cache=F, message=F}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, ggplot2, rpart, caret, rpart.plot, 
+               vip, pdp, doParallel, foreach, tidyr,  
+               ipred, ranger, gbm, xgboost, ggrepel)
+```
+
+## Random forests
+
+```{r, message=F}
+# Create training (70%) set for the Melbourne housing data.
+set.seed(123)
+
+melb <- read_csv("data/melb_data.csv")
+melb <- na.omit(melb)
+
+split  <- rsample::initial_split(melb, prop = 0.7, 
+                                 strata = "Price")
+melb_train  <- rsample::training(split)
+
+# number of features
+n_features <- length(setdiff(names(melb_train), "Price"))
+
+# train a default random forest model
+melb_rf1 <- ranger(
+  Price ~ ., 
+  data = melb_train,
+  mtry = floor(n_features / 3),
+  respect.unordered.factors = "order",
+  seed = 123)
+
+# get OOB RMSE
+(default_rmse <- sqrt(melb_rf1$prediction.error))
+```
+
+## Hyperparameters
+
+There are several tunable hyperparameters that we can consider in this model.
+
+The main hyperparameters to consider include:
+
+1. The number of trees in the forest
+2. The number of features to consider at any given split: $m_{try}$
+3. The complexity of each tree
+4. The sampling scheme
+5. The splitting rule to use during tree construction
+
+## Number of trees
+
+Number of trees needs to be sufficiently large to stabilize the error rate
+
+this chunk breaks my computer...
+```{r, hyper_1, eval=T,  cache=F, message=F, echo=F, fig.retina = 2, fig.width = 9, fig.height = 5, fig.align = 'center'}
+# number of features
+n_features <- ncol(melb_train) - 1
+
+# tuning grid
+tuning_grid <- expand.grid(
+  trees = seq(10, 1000, by = 20),
+  rmse  = NA
+)
+
+for(i in seq_len(nrow(tuning_grid))) {
+  
+  # Fit a random forest
+  fit <- ranger(
+    formula = Price ~ ., 
+    data = melb_train, 
+    num.trees = tuning_grid$trees[i],
+    mtry = floor(n_features / 3),
+    respect.unordered.factors = 'order',
+    verbose = FALSE,
+    seed = 123
+  )
+  
+  # Extract OOB RMSE
+  tuning_grid$rmse[i] <- sqrt(fit$prediction.error)
+  
+}
+
+ggplot(tuning_grid, aes(trees, rmse)) +
+  geom_line(linewidth = 1) +
+  ylab("OOB Error (RMSE)") +
+  xlab("Number of trees")
+```
+
+## Split-variable randomization 
+
+Hyperparameter $m_{try}$ controls split-variable randomization.
+
+this chunk breaks my computer...
+```{r, hyper_2, eval = T, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 9, fig.height = 5, fig.align = 'center'}
+tuning_grid <- expand.grid(
+  trees = seq(10, 1000, by = 20),
+  mtry  = floor(c(seq(2, 80, length.out = 5), 26)),
+  rmse  = NA
+)
+
+for(i in seq_len(nrow(tuning_grid))) {
+  fit <- ranger(
+    formula    = Price ~ ., 
+    data       = melb_train, 
+    num.trees  = tuning_grid$trees[i],
+    mtry       = tuning_grid$mtry[i],
+    respect.unordered.factors = 'order',
+    verbose    = FALSE,
+    seed       = 123
+  )
+  
+  tuning_grid$rmse[i] <- sqrt(fit$prediction.error)
+  
+}
+
+labels <- tuning_grid %>%
+  filter(trees == 990) %>%
+  mutate(mtry = as.factor(mtry))
+
+tuning_grid %>%
+  mutate(mtry = as.factor(mtry)) %>%
+  ggplot(aes(trees, rmse, color = mtry)) +
+  geom_line(linewidth = 1, show.legend = FALSE) +
+  ggrepel::geom_text_repel(data = labels, aes(trees, rmse, label = mtry), nudge_x = 50, show.legend = FALSE) +
+  ylab("OOB Error (RMSE)") +
+  xlab("Number of trees")
+```
+
+## Tree complexity
+
+We can control depth and complexity of individual trees with node size the most common to control complexity. 
+
+this chode chunk breaks my computer...
+```{r, hyper_3, eval = T, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 9, fig.height = 5, fig.align = 'center'}
+tuning_grid <- expand.grid(
+  min.node.size = 1:20,
+  run_time  = NA,
+  rmse = NA
+)
+
+for(i in seq_len(nrow(tuning_grid))) {
+  fit_time <- system.time({
+    fit <- ranger(
+    formula    = Price ~ ., 
+    data       = melb_train, 
+    num.trees  = 1000,
+    mtry       = 26,
+    min.node.size = tuning_grid$min.node.size[i],
+    respect.unordered.factors = 'order',
+    verbose    = FALSE,
+    seed       = 123
+  )
+})
+  
+  tuning_grid$run_time[i] <- fit_time[[3]]
+  tuning_grid$rmse[i] <- sqrt(fit$prediction.error)
+  
+}
+
+min_node_size <- tuning_grid %>% 
+  mutate(
+    error_first = first(rmse),
+    runtime_first = first(run_time),
+    `Error Growth` = (rmse / error_first) - 1,
+    `Run Time Reduction` = (run_time / runtime_first) - 1
+    )
+
+p1 <-  ggplot(min_node_size, aes(min.node.size, `Error Growth`)) +
+  geom_smooth(linewidth = 1, se = FALSE, color = "black") +
+  scale_y_continuous("Percent growth in error estimate", labels = scales::percent) +
+  xlab("Minimum node size") +
+  ggtitle("A) Impact to error estimate")
+
+p2 <-  ggplot(min_node_size, aes(min.node.size, `Run Time Reduction`)) +
+  geom_smooth(linewidth = 1, se = FALSE, color = "black") +
+  scale_y_continuous("Reduction in run time", labels = scales::percent) +
+  xlab("Minimum node size") +
+  ggtitle("B) Impact to run time")
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
+```
+
+## Sampling schedule 
+
+Can also adjust sample size and decide on whether to sample with or without replacement. 
+
+This code works on my computer :) 
+```{r, hyper_4, eval = T, cache=F, message=F, echo=F, fig.retina = 2, fig.width = 9, fig.height = 5, fig.align = 'center'}
+tuning_grid <- expand.grid(
+  sample.fraction = seq(.05, .95, by = .05),
+  replace  = c(TRUE, FALSE),
+  rmse = NA
+)
+
+for(i in seq_len(nrow(tuning_grid))) {
+  fit <- ranger(
+    formula    = Price ~ ., 
+    data       = melb_train, 
+    num.trees  = 50,
+    mtry       = 20,
+    sample.fraction = tuning_grid$sample.fraction[i],
+    replace = tuning_grid$replace[i],
+    respect.unordered.factors = 'order',
+    verbose    = FALSE,
+    seed       = 123
+  )
+
+  tuning_grid$rmse[i] <- sqrt(fit$prediction.error)
+  
+}
+
+tuning_grid %>%
+  ggplot(aes(sample.fraction, rmse, color = replace)) +
+  geom_line(linewidth = 1) +
+  scale_x_continuous("Sample Fraction", breaks = seq(.1, .9, by = .1), labels = scales::percent) +
+  ylab("OOB Error (RMSE)") +
+  scale_color_discrete("Sample with Replacement") +
+  theme(legend.position = c(0.8, 0.85),
+        legend.key = element_blank(),
+        legend.background = element_blank())
+```
+
+# Decision Tree and Randome forest that can run on my computer
+
+Let's simplify....
+
+Plot a decision tree
+
+```{r, cache=F, message=F, echo=F, fig.retina = 10, fig.width = 20, fig.height = 16, fig.align = 'center'}
+
+# Increase the size of the plotting device
+par(mar = c(1, 1, 1, 1) + 0.05)  # Adjust the margin values as needed
+
+# train a decision tree based on our dataset 
+fit <- rpart(Price ~ Rooms + Bathroom + Landsize + BuildingArea +
+             YearBuilt + Lattitude + Longtitude, data = melb)
+
+# plot our regression tree 
+plot(fit, uniform=TRUE)
+# add text labels & make them 60% as big as they are by default
+text(fit, cex=.6)
+```
+
+We can now use our fitted model to predict the prices of some houses, using the predict() function.
+
+```{r}
+print("Making predictions for the following 5 houses:")
+print(head(melbourne_data))
+
+print("The predictions are")
+print(predict(fit, head(melbourne_data)))
+
+print("Actual price")
+print(head(melbourne_data$Price))
+```
+
+# How do we know if our model is good?
+
+We can get the MAE for our model using the mae() function, from the modelr package. 
+
+-> On average, our predictions are off by about X.
+
+```{r}
+# package with the mae function
+library(modelr)
+
+# get the mean average error for our model
+mae(model = fit, data = melb)
+```
+
+## The Problem with "In-Sample" Scores
+
+Models' practical value come from making predictions on new data, so we should measure performance on data that wasn't used to build the model. The most straightforward way to do this is to exclude some of our data from the model-building process, and then use those to test the model's accuracy on data it hasn't seen before. This data is called validation data.
+
+We can split our dataframe into testing and training data very easily using the resample_partition() function from the modelr package.
+
+```{r}
+# split our data so that 30% is in the test set and 70% is in the training set
+
+library(rsample)
+melb_data <- na.omit(melb_data)
+split <- initial_split(melb_data, prop = 0.7)  # Split the dataset 
+melb_train <- training(split)  # Training set
+melb_test <- testing(split)  # Test set
+
+# how many cases are in test & training set? 
+lapply(split, dim)
+```
+
+We can then fit a new model using our training data and test it using our testing data.
+
+```{r, cache=F, message=F, echo=F, fig.retina = 10, fig.width = 20, fig.height = 16, fig.align = 'center'}
+
+# Increase the size of the plotting device
+par(mar = c(0.8, 0.8, 0.8, 0.8) + 0.08)  # Adjust the margin values as needed
+
+# fit a new model to our training set
+fit2 <- rpart(Price ~ Rooms + Bathroom + Landsize + BuildingArea +
+             YearBuilt + Lattitude + Longtitude, data = melb_train)
+
+# get the mean average error for our new model, based on our test data
+mae(model = fit2, data = melb_test)
+
+# plot our regression tree 
+plot(fit2, uniform=TRUE)
+# add text labels & make them 60% as big as they are by default
+text(fit2, cex=.6)
+```
+
+## Over/under fitting
+
+We can use a utility function to help compare MAE scores from different values for maxdepth:
+
+```{r}
+# a function to get the maximum average error for a given max depth. You should pass in
+# the target as the name of the target column and the predictors as vector where
+# each item in the vector is the name of the column
+get_mae <- function(maxdepth, target, predictors, training_data, testing_data){
+    
+    # turn the predictors & target into a formula to pass to rpart()
+    predictors <- paste(predictors, collapse="+")
+    formula <- as.formula(paste(target,"~",predictors,sep = ""))
+    
+    # build our model
+    model <- rpart(formula, data = training_data,
+                   control = rpart.control(maxdepth = maxdepth))
+    # get the mae
+    mae <- mae(model, testing_data)
+    return(mae)
+}
+```
+
+We can use a for-loop to compare the accuracy of models built with different values for maxdepth
+
+```{r}
+# target & predictors to feed into our formula
+target <- "Price"
+predictors <-  c("Rooms","Bathroom","Landsize","BuildingArea",
+                 "YearBuilt","Lattitude","Longtitude")
+
+# get the MAE for maxdepths between 1 & 10
+for(i in 1:10){
+    mae <- get_mae(maxdepth = i, target = target, predictors = predictors,
+                  training_data = melb_train, testing_data = melb_test)
+    print(glue::glue("Maxdepth: ",i,"\t MAE: ",mae))
+}
+```
+
+# Random Forests 
+
+All we need to change in order to use a random forest instead of a plain decision tree is to load in the correct library & change the function we use from rpart() to randomForest()
+
+```{r}
+# read in the library we'll use for random forests
+library(randomForest)
+# Install and load the missForest package
+install.packages("missForest")
+library(missForest)
+
+```
 
 ```{r}
 
+# fit a random forest model to our training set
+fitRandomForest <- randomForest(Price ~ Rooms + Bathroom + Landsize + BuildingArea + YearBuilt + Lattitude + Longtitude, data = melb_train)
+
+# get the mean average error for our new model, based on our test data
+mae(model = fitRandomForest, data = melb_test) # out of sample fit 
+
+mae(model = fitRandomForest, data = melb_train) # in sample fit 
+
+
 ```
+
+## Basic GBM
+
+Two main boosting hyperparameters are:
+
+1. Number of trees
+2. Learning rate (shrinkage)
+
+Two main tree hyperparameters are:
+
+1. Tree depth
+2. Minimum number of observations in terminal nodes
+
+
+```{r, message=F, eval = F}
+# run a basic GBM model
+set.seed(123)  # for reproducibility
+melb_gbm1 <- gbm(
+  formula = Price ~ Rooms + Bathroom + Landsize + BuildingArea + YearBuilt + Lattitude + Longtitude,
+  data = melb_train,
+  distribution = "gaussian",  # SSE loss function
+  n.trees = 5000,
+  shrinkage = 0.1,
+  interaction.depth = 3,
+  n.minobsinnode = 10,
+  cv.folds = 10
+)
+
+# find index for number trees with minimum CV error
+best <- which.min(melb_gbm1$cv.error)
+
+# get MSE and compute RMSE
+sqrt(melb_gbm1$cv.error[best])
+```
+
+The RMSE is 332333.7
+
+## XGBoost
+
+Our tuning strategy with xgboost is the following. 
+
+1. Increase number of trees and tune learning rate with early stopping
+2. Tune tree-specific hyperparameters
+3. Explore stochastic GBM attributes
+4. If substantial overfitting occurs explore regularization hyperparameters
+5. If you find hyperparameter values that are substantially different from default settings, be sure to retune the learning rate
+6. Obtain final “optimal” model
+
+XGBoost requires some additional data preparation. Need to encode our categorical variables numerically.
+
+```{r, message=F, eval = F}
+library(recipes)
+xgb_prep <- recipe(Price ~ Rooms + Bathroom + Landsize + BuildingArea + YearBuilt + Lattitude + Longtitude, data = melb_train) %>%
+  step_integer(all_nominal()) %>%
+  prep(training = melb_train, retain = TRUE) %>%
+  juice()
+
+X <- as.matrix(xgb_prep[setdiff(names(xgb_prep), "Price")])
+Y <- xgb_prep$Price
+```
+
+Next we will go through a series of grid searches to find model hyperparameters.
+
+```{r, message=F, eval = F}
+set.seed(123)
+melb_xgb <- xgb.cv(
+  data = X,
+  label = Y,
+  nrounds = 6000,
+  objective = "reg:linear",
+  early_stopping_rounds = 50, 
+  nfold = 10,
+  params = list(
+    eta = 0.1,
+    max_depth = 3,
+    min_child_weight = 3,
+    subsample = 0.8,
+    colsample_bytree = 1.0),
+  verbose = 0
+)  
+
+# minimum test CV RMSE
+min(melb_xgb$evaluation_log$test_rmse_mean)
+```
+
+Minimum test CV RMSE is 320935.3.  
+
+Next, we assess if overfitting is limiting our model’s performance by performing a grid search that examines various regularisation parameters.
+
+```{r, message=F, eval = F}
+# hyperparameter grid
+hyper_grid <- expand.grid(
+  eta = 0.01,
+  max_depth = 3, 
+  min_child_weight = 3,
+  subsample = 0.5, 
+  colsample_bytree = 0.5,
+  gamma = c(0, 1, 10, 100, 1000),
+  lambda = c(0, 1e-2, 0.1, 1, 100, 1000, 10000),
+  alpha = c(0, 1e-2, 0.1, 1, 100, 1000, 10000),
+  rmse = 0,          # a place to dump RMSE results
+  trees = 0          # a place to dump required number of trees
+)
+```
+
+this chunk took some time to run but did not break my computer :) 
+```{r, message=F, eval = F}
+# grid search
+for(i in seq_len(nrow(hyper_grid))) {
+  set.seed(123)
+  m <- xgb.cv(
+    data = X,
+    label = Y,
+    nrounds = 4000,
+    objective = "reg:linear",
+    early_stopping_rounds = 50, 
+    nfold = 10,
+    verbose = 0,
+    params = list( 
+      eta = hyper_grid$eta[i], 
+      max_depth = hyper_grid$max_depth[i],
+      min_child_weight = hyper_grid$min_child_weight[i],
+      subsample = hyper_grid$subsample[i],
+      colsample_bytree = hyper_grid$colsample_bytree[i],
+      gamma = hyper_grid$gamma[i], 
+      lambda = hyper_grid$lambda[i], 
+      alpha = hyper_grid$alpha[i]
+    ) 
+  )
+  hyper_grid$rmse[i] <- min(m$evaluation_log$test_rmse_mean)
+  hyper_grid$trees[i] <- m$best_iteration
+}
+```
+
+rmse
+trees
+
+## XGBoost final model
+
+```{r, message=F, eval = F}
+# optimal parameter list
+params <- list(
+  eta = 0.01,
+  max_depth = 3,
+  min_child_weight = 3,
+  subsample = 0.5,
+  colsample_bytree = 0.5
+)
+
+# train final model
+xgb.fit.final <- xgboost(
+  params = params,
+  data = X,
+  label = Y,
+  nrounds = 3944,
+  objective = "reg:linear",
+  verbose = 0
+)
+```
+
 
